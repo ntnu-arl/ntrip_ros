@@ -1,0 +1,13 @@
+<launch>
+    <node pkg="ntrip_ros" type="ntripclient.py" name="ntrip_client" output="screen">
+        <param name="ntrip_server" value="rtk2go.com:2101" />
+        <param name="ntrip_port" value="2101" />
+        <param name="ntrip_user" value="" />
+        <param name="ntrip_pass" value="" />
+        <param name="ntrip_stream" value="leedgps" />
+        <param name="latitude" value="47.37812" />
+        <param name="longitude" value="8.54608" />
+        <param name="gps_topc" value="/mavros/global_position/raw/fix" />
+        <param name="rtcm_topic" value="/mavros/gps_rtk/send_rtcm" />
+    </node>
+</launch>
