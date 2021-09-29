@@ -3,6 +3,7 @@
 import rospy
 
 from mavros_msgs.msg import RTCM
+from sensor_msgs.msg import NavSatFix
 
 import datetime
 from http.client import HTTPConnection
@@ -62,15 +63,30 @@ class ntripclient:
         self.ntrip_user = rospy.get_param('~ntrip_user')
         self.ntrip_pass = rospy.get_param('~ntrip_pass')
         self.ntrip_stream = rospy.get_param('~ntrip_stream')
-        self.latitude = rospy.get_param('~latitude')
-        self.longitude = rospy.get_param('~longitude')
-        self.nmea_gga_string = self.generate_gga_string()
+        self.gps_topic = None
+        if rospy.has_param('~gps_topic'):
+            self.gps_topic = rospy.get_param('~gps_topic')
+        self.sub = None
 
+        if self.gps_topic is not None and self.gps_topic != '':
+            rospy.loginfo('Using coordinates supplied in ' + self.gps_topic)
+            rospy.loginfo('Will start streaming corrections once 3D fix is acquired')
+            self.sub = rospy.Subscriber(self.gps_topic, NavSatFix, self.gps_fix_cb)
+            self.latitude = None
+            self.longitude = None
+        else:
+            rospy.loginfo('Using coordinates from params')
+            self.latitude = rospy.get_param('~latitude')
+            self.longitude = rospy.get_param('~longitude')
+            self.nmea_gga_string = self.generate_gga_string()
+            self.connection = ntripconnect(self)
+            self.connection.start()
+
+        
         self.pub = rospy.Publisher(self.rtcm_topic, RTCM, queue_size=10)
 
         self.connection = None
-        self.connection = ntripconnect(self)
-        self.connection.start()
+
 
     def generate_gga_string(self):
         """
@@ -106,6 +122,22 @@ class ntripclient:
         nmeastring = '$'+nmeadata+'*'+csum
                 
         return(nmeastring)
+
+    def gps_fix_cb(self, msg):
+        """
+        Callback for mavros raw gps msg to read in current position
+        """
+        if msg.status.status >= 0:
+            self.latitude = msg.latitude
+            self.longitude = msg.longitude
+            self.nmea_gga_string = self.generate_gga_string()
+            rospy.loginfo('Got position information with 3D fix, starting relaying RTCM data')
+            self.connection = ntripconnect(self)
+            self.connection.start()
+            self.sub.unregister()
+            
+
+
 
     def run(self):
         rospy.spin()
