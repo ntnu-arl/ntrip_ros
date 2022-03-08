@@ -7,7 +7,7 @@
         <param name="ntrip_stream" value="MSM_NEAR" />
         <param name="latitude" value="63.416108" />
         <param name="longitude" value="10.401436" />
-        <param name="gps_topc" value="/ublox/fix" />
+        <param name="gps_topic" value="/ublox/fix" />
         <param name="rtcm_topic" value="/rtcm" />
     </node>
 </launch>
