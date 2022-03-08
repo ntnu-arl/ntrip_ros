@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import rospy
+import time
 
 from rtcm_msgs.msg import Message
 from sensor_msgs.msg import NavSatFix
@@ -43,7 +44,11 @@ class ntripconnect(Thread):
         buf = ""
         rmsg = Message()
         while not self.stop:
-            data = response.read(1)
+            ''' Separates individual RTCM messages and publishes each one on the same topic '''
+            try:
+                data = response.read(1)
+            except:
+                data = '' # To recover from socket timeout..
             if len(data) != 0:
                 if data!=chr(211).encode('latin-1'):
                     continue
@@ -68,14 +73,15 @@ class ntripconnect(Thread):
                 
                 # Update gga with current location
                 self.ntc.nmea_gga_string = generate_gga_string(self.ntc.latitude, self.ntc.longitude) 
-                rospy.loginfo(self.ntc.nmea_gga_string )
                 try:
                     connection = HTTPConnection(self.ntc.ntrip_server + ':' + str(self.ntc.ntrip_port))
                     connection.request('GET', '/'+self.ntc.ntrip_stream, self.ntc.nmea_gga_string, headers)
                     response = connection.getresponse()
                     if response.status != 200: raise Exception("Connection error. Got HTTP response status " + str(response.status))
                 except:
-                    pass # Need try-catch to recover from lost internet connection...
+                    # Need try-catch to recover from lost internet connection...
+                    time.sleep(10) # Wait a bit to avoid spamming the server
+                    pass 
             
 
         connection.close()
