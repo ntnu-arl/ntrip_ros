@@ -1,8 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import rospy
 
-from mavros_msgs.msg import RTCM
+from rtcm_msgs.msg import Message
 from sensor_msgs.msg import NavSatFix
 
 import datetime
@@ -17,20 +17,22 @@ class ntripconnect(Thread):
         self.stop = False
 
     def run(self):
+        authenticationScheme = 'Basic '
+        userCredentials = str(self.ntc.ntrip_user) + ':' + str(self.ntc.ntrip_pass)
         headers = {
             'Ntrip-Version': 'Ntrip/2.0',
             'User-Agent': 'NTRIP ntrip_ros',
             'Connection': 'close',
-            'Authorization': b'Basic ' + b64encode((self.ntc.ntrip_user + ':' + self.ntc.ntrip_pass).encode())
+            'Authorization': authenticationScheme.encode() + b64encode(userCredentials.encode())
         }
-        connection = HTTPConnection(self.ntc.ntrip_server)
+        connection = HTTPConnection(self.ntc.ntrip_server + ':' + str(self.ntc.ntrip_port))
         now = datetime.datetime.utcnow()
         connection.request('GET', '/'+self.ntc.ntrip_stream, self.ntc.nmea_gga_string, headers)
         
         response = connection.getresponse()
-        if response.status != 200: raise Exception("Connection error. Got HTTP response status " + response.status)
+        if response.status != 200: raise Exception("Connection error. Got HTTP response status " + str(response.status))
         buf = ""
-        rmsg = RTCM()
+        rmsg = Message()
         while not self.stop:
             data = response.read(1)
             if data!=chr(211).encode('latin-1'):
@@ -47,7 +49,7 @@ class ntripconnect(Thread):
 
             rmsg.header.seq += 1
             rmsg.header.stamp = rospy.get_rostime()
-            rmsg.data = data + chr(l1).encode("latin-1") + chr(l2).encode("latin-1") + pkt + parity
+            rmsg.message = data + chr(l1).encode("latin-1") + chr(l2).encode("latin-1") + pkt + parity
             self.ntc.pub.publish(rmsg)
 
         connection.close()
@@ -57,15 +59,16 @@ class ntripclient:
     def __init__(self):
         rospy.init_node('ntripclient', anonymous=True)
 
-        self.rtcm_topic = rospy.get_param('~rtcm_topic')
+        self.rtcm_topic = rospy.get_param('~rtcm_topic', '/rtcm')
 
-        self.ntrip_server = rospy.get_param('~ntrip_server')
-        self.ntrip_user = rospy.get_param('~ntrip_user')
-        self.ntrip_pass = rospy.get_param('~ntrip_pass')
-        self.ntrip_stream = rospy.get_param('~ntrip_stream')
+        self.ntrip_server = rospy.get_param('~ntrip_server', 'no.nrtk.eu')
+        self.ntrip_port = rospy.get_param('~ntrip_port', 9301)
+        self.ntrip_user = rospy.get_param('~ntrip_user', 'USER')
+        self.ntrip_pass = rospy.get_param('~ntrip_pass', 'PASSWORD')
+        self.ntrip_stream = rospy.get_param('~ntrip_stream', 'MSM_NEAR')
         self.gps_topic = None
         if rospy.has_param('~gps_topic'):
-            self.gps_topic = rospy.get_param('~gps_topic')
+            self.gps_topic = rospy.get_param('~gps_topic', '/ublox/fix')
         self.sub = None
 
         if self.gps_topic is not None and self.gps_topic != '':
@@ -76,14 +79,14 @@ class ntripclient:
             self.longitude = None
         else:
             rospy.loginfo('Using coordinates from params')
-            self.latitude = rospy.get_param('~latitude')
-            self.longitude = rospy.get_param('~longitude')
+            self.latitude = rospy.get_param('~latitude',63.416108)
+            self.longitude = rospy.get_param('~longitude', 10.401436)
             self.nmea_gga_string = self.generate_gga_string()
             self.connection = ntripconnect(self)
             self.connection.start()
 
         
-        self.pub = rospy.Publisher(self.rtcm_topic, RTCM, queue_size=10)
+        self.pub = rospy.Publisher(self.rtcm_topic, Message, queue_size=10)
 
         self.connection = None
 
